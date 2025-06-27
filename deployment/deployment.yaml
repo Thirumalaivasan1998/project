@@ -1,0 +1,144 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: webapp-deployment
+  namespace: default
+  labels:
+    app: webapp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: webapp
+  template:
+    metadata:
+      labels:
+        app: webapp
+    spec:
+      serviceAccountName: webapp-sa
+      containers:
+        - name: webapp
+          image: ghcr.io/revathibala/hello-world-app:887120ca144960aeb5169d017f712d65dbd24379
+          ports:
+            - containerPort: 80
+          envFrom:
+            - configMapRef:
+                name: webapp-config
+            - secretRef:
+                name: webapp-secret
+          volumeMounts:
+            - name: app-storage
+              mountPath: /usr/share/nginx/html  # Example pathDocker Hub
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+      volumes:
+        - name: app-storage
+          persistentVolumeClaim:
+            claimName: webapp-pvc
+
+---
+
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: webapp-service
+  namespace: default
+spec:
+  selector:
+    app: webapp
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+  type: ClusterIP
+
+---
+
+
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: webapp-route
+spec:
+  to:
+    kind: Service
+    name: webapp-service
+  port:
+    targetPort: 80
+  tls:
+    termination: edge
+
+---
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: webapp-sa
+
+---
+
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: webapp-role
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+---
+
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: webapp-rolebinding
+subjects:
+  - kind: ServiceAccount
+    name: webapp-sa
+roleRef:
+  kind: Role
+  name: webapp-role
+  apiGroup: rbac.authorization.k8s.io
+
+---
+
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: webapp-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+
+---
+
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: webapp-secret
+type: Opaque
+stringData:
+  APP_KEY: MySecretKey123
+
+---
+
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: webapp-config
+data:
+  WELCOME_MSG: "Welcome to My Web Application on ROSA!"
